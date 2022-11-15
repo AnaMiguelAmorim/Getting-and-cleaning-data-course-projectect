@@ -1,57 +1,69 @@
-library(dplyr)
+if(!file.exists("./data")){dir.create("./data")}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+download.file(fileUrl,destfile="./data/Dataset.zip",method="curl")
 
-# Reading the list of features and activities
+unzip(zipfile="./data/Dataset.zip",exdir="./data")
+path_rf <- file.path("./data" , "UCI HAR Dataset")
+files<-list.files(path_rf, recursive=TRUE)
 
-feature_list <- read.table(file = "./UCIHARDataset/features.txt", col.names = c("s_no", "features"))
-activity_list <- read.table(file ="./UCIHARDataset/activity_labels.txt", col.names = c("labels", "activity") )
+## Read the Activity files
 
-subject_train <- read.table("./UCIHARDataset/train/subject_train.txt", col.names = "subject")
-subject_test <- read.table("./UCIHARDataset/test/subject_test.txt", col.names = "subject")
-X_test <- read.table("./UCIHARDataset/test/X_test.txt", col.names = feature_list$features)
-y_test <- read.table("./UCIHARDataset/test/y_test.txt", col.names = "yLabels")
-X_train <- read.table("./UCIHARDataset/train/X_train.txt", col.names = feature_list$features)
-y_train <- read.table("./UCIHARDataset/train/y_train.txt", col.names = "yLabels")
+dataActivityTest  <- read.table(file.path(path_rf, "test" , "Y_test.txt" ),header = FALSE)
+dataActivityTrain <- read.table(file.path(path_rf, "train", "Y_train.txt"),header = FALSE)
 
-# Merges the training and the test sets to create one data set
+## Read the Subject files
 
-X_final <- rbind(X_train, X_test)
-y_final <- rbind(y_train, y_test)
-subject <- rbind(subject_train, subject_test)
+dataSubjectTrain <- read.table(file.path(path_rf, "train", "subject_train.txt"),header = FALSE)
+dataSubjectTest  <- read.table(file.path(path_rf, "test" , "subject_test.txt"),header = FALSE)
 
-# merging all
+## Read Fearures files
 
-final_data <- cbind(subject, y_final, X_final)
+dataFeaturesTest  <- read.table(file.path(path_rf, "test" , "X_test.txt" ),header = FALSE)
+dataFeaturesTrain <- read.table(file.path(path_rf, "train", "X_train.txt"),header = FALSE)
 
+str(dataActivityTest)
+str(dataActivityTrain)
+str(dataSubjectTrain)
+str(dataSubjectTest)
+str(dataFeaturesTest)
+str(dataFeaturesTrain)
 
-# Extracts only the measurements on the mean and standard deviation for each measurement.
+## Concatenate the data tables by rows
 
-cleaned_Data <- select(final_data,subject, yLabels, contains("mean"), contains("std"))
-cleaned_Data$yLabels <- activity_list[cleaned_Data$yLabels, 2]
+dataSubject <- rbind(dataSubjectTrain, dataSubjectTest)
+dataActivity<- rbind(dataActivityTrain, dataActivityTest)
+dataFeatures<- rbind(dataFeaturesTrain, dataFeaturesTest)
 
+names(dataSubject)<-c("subject")
+names(dataActivity)<- c("activity")
+dataFeaturesNames <- read.table(file.path(path_rf, "features.txt"),head=FALSE)
+names(dataFeatures)<- dataFeaturesNames$V2
 
-# Appropriately labels the data set with descriptive variable names
-names(cleaned_Data)[2] = "Activity"
-
-names(cleaned_Data)<-gsub("Acc", "accelerometer", names(cleaned_Data))
-names(cleaned_Data)<-gsub("Mag", "Magnitude", names(cleaned_Data))
-names(cleaned_Data)<-gsub("-std()", "Standerd Deviation", names(cleaned_Data), ignore.case = TRUE)
-names(cleaned_Data)<-gsub("-freq()", "Frequency", names(cleaned_Data), ignore.case = TRUE)
-names(cleaned_Data)<-gsub("angle", "Angle", names(cleaned_Data))
-names(cleaned_Data)<-gsub("^t", "Time", names(cleaned_Data))
-names(cleaned_Data)<-gsub("^f", "Frequency", names(cleaned_Data))
-names(cleaned_Data)<-gsub("tBody", "TimeBody", names(cleaned_Data))
-names(cleaned_Data)<-gsub("Gyro", "Gyroscope", names(cleaned_Data))
-names(cleaned_Data)<-gsub("BodyBody", "Body", names(cleaned_Data))
-names(cleaned_Data)<-gsub("-mean()", "Mean", names(cleaned_Data), ignore.case = TRUE)
+## Merge columns to get the data frame 
+dataCombine <- cbind(dataSubject, dataActivity)
+Data <- cbind(dataFeatures, dataCombine)
 
 
-# From the data set in step 4, creates a second, independent tidy data set with 
-# the average of each variable for each activity and each subject.
+subdataFeaturesNames<-dataFeaturesNames$V2[grep("mean\\(\\)|std\\(\\)", dataFeaturesNames$V2)]
+## Subset the data frame Data by seleted names of Features
+selectedNames<-c(as.character(subdataFeaturesNames), "subject", "activity" )
+Data<-subset(Data,select=selectedNames)
+str(Data)
 
-tidyData <- cleaned_Data %>%
-  group_by(subject, Activity) %>%
-  summarise_all(funs(mean))
-write.table(tidyData, "tidyData.txt", row.name=FALSE)
+## Read descriptive activity names from “activity_labels.txt”
 
-summarise(tidyData)
-x <- str(tidyData)
+activityLabels <- read.table(file.path(path_rf, "activity_labels.txt"),header = FALSE)
+
+
+names(Data)<-gsub("^t", "time", names(Data))
+names(Data)<-gsub("^f", "frequency", names(Data))
+names(Data)<-gsub("Acc", "Accelerometer", names(Data))
+names(Data)<-gsub("Gyro", "Gyroscope", names(Data))
+names(Data)<-gsub("Mag", "Magnitude", names(Data))
+names(Data)<-gsub("BodyBody", "Body", names(Data))
+
+
+library(plyr);
+Data2<-aggregate(. ~subject + activity, Data, mean)
+Data2<-Data2[order(Data2$subject,Data2$activity),]
+write.table(Data2, file = "tidydata.txt",row.name=FALSE)
